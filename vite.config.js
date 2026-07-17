@@ -109,12 +109,12 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'https://cashbook-backend-gres.onrender.com',
+        target: 'https://st-cashbook-backend.onrender.com',
         changeOrigin: true,
         secure: true,
       },
       '/uploads': {
-        target: 'https://cashbook-backend-gres.onrender.com',
+        target: 'https://st-cashbook-backend.onrender.com',
         changeOrigin: true,
         secure: true,
       },
