@@ -1,4 +1,6 @@
-const BASE = '/api';
+// Backend API base URL — .env se aata hai (VITE_API_URL).
+// Khaali/undefined hone par '/api' use hota hai jise Vite proxy backend tak bhejta hai.
+const BASE = import.meta.env.VITE_API_URL || '/api';
 
 async function req(method, path, body) {
   const res = await fetch(`${BASE}${path}`, {
