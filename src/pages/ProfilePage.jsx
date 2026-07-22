@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Pencil, LogOut, ChevronDown, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { BASE, getToken } from '../api';
 import AppDownloadButtons from '../components/shared/AppDownloadButtons';
 
 /* ── Simple Toggle switch ─────────────────────────────── */
@@ -288,8 +289,8 @@ export default function ProfilePage() {
     if (mobileChanged || emailChanged) {
       setIsSaving(true);
       try {
-        if (mobileChanged) await fetch('/api/auth/send-otp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mobile: draftProfile.mobile }) });
-        if (emailChanged) await fetch('/api/auth/send-otp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: draftProfile.email }) });
+        if (mobileChanged) await fetch(`${BASE}/auth/send-otp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mobile: draftProfile.mobile }) });
+        if (emailChanged) await fetch(`${BASE}/auth/send-otp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: draftProfile.email }) });
         setShowOtpModal(true);
       } catch (err) {
         setProfileError('Failed to send OTPs. Please try again.');
@@ -305,9 +306,13 @@ export default function ProfilePage() {
     setProfileError(null);
     setOtpError('');
     try {
-      const res = await fetch('/api/auth/me', {
+      const res = await fetch(`${BASE}/auth/me`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+        },
         body: JSON.stringify({
           name: draftProfile.name,
           mobile: draftProfile.mobile,

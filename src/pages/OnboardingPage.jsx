@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { BASE, getToken } from '../api';
 import { CATEGORIES, BUSINESS_TYPES, CATEGORY_ICONS, TYPE_ICONS } from '../constants/businessIcons';
 
 /* ─── Category / Type card ──────────────────────────────────── */
@@ -92,9 +93,10 @@ export default function OnboardingPage() {
       // Save full name to user profile
       if (fullName.trim()) {
         updateUser({ name: fullName.trim() });
-        fetch('/api/auth/me', {
+        fetch(`${BASE}/auth/me`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
           body: JSON.stringify({ name: fullName.trim() }),
         }).catch(() => {});
       }

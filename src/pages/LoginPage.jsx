@@ -208,7 +208,7 @@ export default function LoginPage() {
       try { data = await res.json(); } catch { throw new Error('Server connection failed. Please try again.'); }
       if (!res.ok) throw new Error(data.error || 'OTP verification failed');
 
-      login(data.user);
+      login(data.user, data.token);
       navigate('/onboarding', { replace: true });
     } catch (err) {
       setError(err.message);

@@ -1,12 +1,24 @@
 // Backend API base URL — .env se aata hai (VITE_API_URL).
 // Khaali/undefined hone par '/api' use hota hai jise Vite proxy backend tak bhejta hai.
-const BASE = import.meta.env.VITE_API_URL || '/api';
+export const BASE = import.meta.env.VITE_API_URL || '/api';
+
+// ── Bearer token auth ───────────────────────────────────────
+// Cross-site (frontend aur backend alag domain) par cookie reliably nahi jaati,
+// isliye JWT token localStorage me store karke Authorization header me bhejte hain.
+export const TOKEN_KEY = 'cashbook_token';
+export const getToken   = () => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } };
+export const setToken   = (t) => { try { if (t) localStorage.setItem(TOKEN_KEY, t); } catch { /* ignore */ } };
+export const clearToken = () => { try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ } };
+const authHeaders = () => {
+  const t = getToken();
+  return t ? { Authorization: `Bearer ${t}` } : {};
+};
 
 async function req(method, path, body) {
   const res = await fetch(`${BASE}${path}`, {
     method,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json();
@@ -18,6 +30,7 @@ async function uploadReq(path, formData) {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
     credentials: 'include',
+    headers: { ...authHeaders() },
     body: formData,
   });
   const data = await res.json();
