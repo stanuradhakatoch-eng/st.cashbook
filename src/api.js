@@ -69,6 +69,8 @@ export const api = {
     update: (bizId, bookId, txnId, body) => req('PATCH', `/businesses/${bizId}/cashbooks/${bookId}/transactions/${txnId}`, body),
     delete: (bizId, bookId, txnId) => req('DELETE', `/businesses/${bizId}/cashbooks/${bookId}/transactions/${txnId}`),
     uploadAttachments: (bizId, bookId, formData) => uploadReq(`/businesses/${bizId}/cashbooks/${bookId}/transactions/upload`, formData),
+    bulkCreate: (bizId, bookId, entries) => req('POST', `/businesses/${bizId}/cashbooks/${bookId}/transactions/bulk`, { entries }),
+    sampleCsvUrl: (bizId, bookId) => `${BASE}/businesses/${bizId}/cashbooks/${bookId}/transactions/sample-csv`,
   },
 
   parties: {

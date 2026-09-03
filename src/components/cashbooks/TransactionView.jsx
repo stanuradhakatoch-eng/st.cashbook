@@ -4,10 +4,14 @@ import {
   ArrowLeft, Settings, Users, Plus, Search, ChevronDown, X,
   Info, Calendar, Clock, Paperclip, Zap, FileText, CheckSquare,
   Download, RotateCw, ZoomIn, ZoomOut, EyeOff, Trash2, MoreHorizontal,
-  CheckCircle2, Minus, Pencil,
+  CheckCircle2, Minus, Pencil, FileSpreadsheet, FileDown,
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { useApp } from '../../context/AppContext';
 import { api } from '../../api';
+import ImportEntries from './ImportEntries';
 
 /* ─── helpers ──────────────────────────────────────────────── */
 function todayStr() {
@@ -2518,6 +2522,19 @@ export default function TransactionView() {
   const [editTarget, setEditTarget] = useState(null);
   const [hoveredRowId, setHoveredRowId] = useState(null);
   const [detailTxn, setDetailTxn] = useState(null);
+  const [showImport, setShowImport] = useState(false);
+  const [reportsOpen, setReportsOpen] = useState(false);
+  const reportsRef = useRef(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (reportsRef.current && !reportsRef.current.contains(e.target)) {
+        setReportsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
 
   /* filters */
   const [duration, setDuration] = useState('All Time');
@@ -2703,6 +2720,126 @@ export default function TransactionView() {
   const anyFilterActive = duration !== 'All Time' || txnType !== 'All' || partyFilter.length > 0 || !!memberFilter || payModes.length > 0 || categoryFilter.length > 0;
   const clearAllFilters = () => { setDuration('All Time'); setTxnType('All'); setPartyFilter([]); setMemberFilter(null); setPayModes([]); setCategoryFilter([]); };
 
+  const generatePdfReport = () => {
+    if (!filtered || filtered.length === 0) {
+      alert('No entries available to generate report.');
+      return;
+    }
+
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFontSize(16);
+    doc.setTextColor(37, 99, 235);
+    doc.text(book?.name || 'Cashbook Report', 14, 18);
+
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')} | Filter: ${duration}`, 14, 24);
+
+    // Summary box
+    const totalInVal = filtered.filter(t => t.type === 'IN').reduce((s, t) => s + t.amount, 0);
+    const totalOutVal = filtered.filter(t => t.type === 'OUT').reduce((s, t) => s + t.amount, 0);
+    const netBal = totalInVal - totalOutVal;
+
+    doc.setFillColor(243, 244, 246);
+    doc.roundedRect(14, 28, 182, 14, 2, 2, 'F');
+
+    doc.setFontSize(9);
+    doc.setTextColor(22, 163, 74);
+    doc.text(`Total Cash In: Rs. ${totalInVal.toLocaleString('en-IN')}`, 18, 37);
+
+    doc.setTextColor(220, 38, 38);
+    doc.text(`Total Cash Out: Rs. ${totalOutVal.toLocaleString('en-IN')}`, 80, 37);
+
+    doc.setTextColor(31, 41, 55);
+    doc.text(`Net Balance: Rs. ${netBal.toLocaleString('en-IN')}`, 145, 37);
+
+    // Table
+    const totalBalance = filtered.reduce((s, tx) => tx.type === 'IN' ? s + tx.amount : s - tx.amount, 0);
+
+    const tableData = filtered.map((t, i) => {
+      const aboveSum = filtered.slice(0, i).reduce((s, tx) => tx.type === 'IN' ? s + tx.amount : s - tx.amount, 0);
+      const rowBal = totalBalance - aboveSum;
+      const { dateLabel, time } = formatDateTime(t.date, t.created_at);
+
+      return [
+        `${dateLabel}\n${time}`,
+        t.remarks || '—',
+        t.party || '—',
+        t.category || '—',
+        t.payment_mode || t.paymentMode || '—',
+        t.type === 'IN' ? `Rs. ${t.amount.toLocaleString('en-IN')}` : '—',
+        t.type === 'OUT' ? `Rs. ${t.amount.toLocaleString('en-IN')}` : '—',
+        `Rs. ${rowBal.toLocaleString('en-IN')}`,
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 48,
+      head: [['Date & Time', 'Remark', 'Party', 'Category', 'Mode', 'Cash In', 'Cash Out', 'Balance']],
+      body: tableData,
+      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+      bodyStyles: { fontSize: 8 },
+      columnStyles: {
+        5: { textColor: [22, 163, 74], fontStyle: 'bold' },
+        6: { textColor: [220, 38, 38], fontStyle: 'bold' },
+        7: { fontStyle: 'bold' },
+      },
+      foot: [[
+        'Total', '', '', '', '',
+        `Rs. ${totalInVal.toLocaleString('en-IN')}`,
+        `Rs. ${totalOutVal.toLocaleString('en-IN')}`,
+        `Rs. ${netBal.toLocaleString('en-IN')}`
+      ]],
+      footStyles: { fillColor: [243, 244, 246], textColor: [17, 24, 39], fontStyle: 'bold', fontSize: 9 },
+    });
+
+    doc.save(`${(book?.name || 'Cashbook').replace(/\s+/g, '_')}_Report.pdf`);
+  };
+
+  const generateExcelReport = () => {
+    if (!filtered || filtered.length === 0) {
+      alert('No entries available to generate report.');
+      return;
+    }
+
+    const totalBalance = filtered.reduce((s, tx) => tx.type === 'IN' ? s + tx.amount : s - tx.amount, 0);
+
+    const rows = filtered.map((t, i) => {
+      const aboveSum = filtered.slice(0, i).reduce((s, tx) => tx.type === 'IN' ? s + tx.amount : s - tx.amount, 0);
+      const rowBal = totalBalance - aboveSum;
+      const { dateLabel, time } = formatDateTime(t.date, t.created_at);
+
+      return {
+        'Date': dateLabel,
+        'Time': time,
+        'Remark': t.remarks || '',
+        'Party': t.party || '',
+        'Category': t.category || '',
+        'Payment Mode': t.payment_mode || t.paymentMode || '',
+        'Entry By': t.created_by_name || '',
+        'Cash In (Rs.)': t.type === 'IN' ? t.amount : 0,
+        'Cash Out (Rs.)': t.type === 'OUT' ? t.amount : 0,
+        'Balance (Rs.)': rowBal,
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Cashbook Report');
+
+    const max_width = rows.reduce((w, r) => {
+      return Object.keys(r).reduce((acc, k) => {
+        acc[k] = Math.max(acc[k] || 12, String(r[k] || '').length + 3);
+        return acc;
+      }, w);
+    }, {});
+    worksheet['!cols'] = Object.keys(max_width).map(k => ({ wch: max_width[k] }));
+
+    XLSX.writeFile(workbook, `${(book?.name || 'Cashbook').replace(/\s+/g, '_')}_Report.xlsx`);
+  };
+
   if (!book) {
     return (
       <div style={{ padding: 24 }}>
@@ -2714,6 +2851,18 @@ export default function TransactionView() {
         </button>
         <p style={{ marginTop: 16, color: 'var(--gray-500)' }}>Book not found.</p>
       </div>
+    );
+  }
+
+  if (showImport) {
+    return (
+      <ImportEntries
+        businessId={businessId}
+        bookId={bookId}
+        bookName={book?.name}
+        onClose={() => setShowImport(false)}
+        onImported={() => fetchBookData(true)}
+      />
     );
   }
 
@@ -2755,25 +2904,72 @@ export default function TransactionView() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {canWrite && (
-            <button style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '7px 12px', borderRadius: 6,
-              border: '1px solid var(--gray-200)', background: 'var(--white)',
-              fontSize: 13, fontWeight: 500, cursor: 'pointer', color: 'var(--gray-700)',
-            }}>
+            <button
+              onClick={() => setShowImport(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '7px 12px', borderRadius: 6,
+                border: '1px solid var(--gray-200)', background: 'var(--white)',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer', color: 'var(--gray-700)',
+              }}
+            >
               <FileText size={13} />
               Add Bulk Entries
             </button>
           )}
-          <button style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '7px 12px', borderRadius: 6,
-            border: '1px solid var(--gray-200)', background: 'var(--white)',
-            fontSize: 13, fontWeight: 500, cursor: 'pointer', color: 'var(--gray-700)',
-          }}>
-            <CheckSquare size={13} />
-            Reports
-          </button>
+          <div ref={reportsRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setReportsOpen((prev) => !prev)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '7px 12px', borderRadius: 6,
+                border: '1px solid var(--gray-200)', background: 'var(--white)',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer', color: 'var(--gray-700)',
+              }}
+            >
+              <Download size={13} />
+              Reports
+              <ChevronDown size={13} style={{ transform: reportsOpen ? 'rotate(180deg)' : 'none', transition: '0.15s' }} />
+            </button>
+
+            {reportsOpen && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 4px)', right: 0,
+                background: 'var(--white)', border: '1px solid var(--gray-200)',
+                borderRadius: 8, boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+                minWidth: 160, zIndex: 300, padding: '4px 0',
+              }}>
+                <button
+                  onClick={() => { setReportsOpen(false); generatePdfReport(); }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '8px 14px', border: 'none', background: 'none',
+                    fontSize: 13, color: 'var(--gray-700)', cursor: 'pointer',
+                    textAlign: 'left', fontWeight: 500,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--gray-50)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+                >
+                  <FileText size={15} style={{ color: '#DC2626' }} />
+                  PDF Report
+                </button>
+                <button
+                  onClick={() => { setReportsOpen(false); generateExcelReport(); }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '8px 14px', border: 'none', background: 'none',
+                    fontSize: 13, color: 'var(--gray-700)', cursor: 'pointer',
+                    textAlign: 'left', fontWeight: 500,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--gray-50)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+                >
+                  <FileSpreadsheet size={15} style={{ color: '#16A34A' }} />
+                  Excel Report
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
